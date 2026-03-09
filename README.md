@@ -49,20 +49,6 @@ Client → Server → Broadcast → Clients
 
 ---
 
-# Folder Structure
-
-chat-app/
-│
-├── server/
-│   └── chat_server.py
-│
-├── client/
-│   └── chat_client.py
-│
-└── README.md
-
----
-
 # Communication Protocol
 
 The application uses a **simple text-based protocol** between the client and server.
