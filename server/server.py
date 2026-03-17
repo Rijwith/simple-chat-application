@@ -15,10 +15,20 @@ def get_timestamp():
 
 def broadcast(message, exclude=None):
     with lock:
-        for client in clients:
+        dead_clients = []
+
+        for client in list(clients):
             if client != exclude:
                 try:
                     client.send(message.encode())
+                except:
+                    dead_clients.append(client)
+
+        for dc in dead_clients:
+            if dc in clients:
+                del clients[dc]
+                try:
+                    dc.close()
                 except:
                     pass
 
@@ -26,6 +36,7 @@ def broadcast(message, exclude=None):
 def handle_client(client_socket, addr):
 
     username = None
+    has_left = False
 
     try:
         while True:
@@ -36,11 +47,12 @@ def handle_client(client_socket, addr):
                 break
 
             parts = data.split(" ", 1)
-            command = parts[0]
+            command = parts[0].upper().lstrip("/")
+            argument = parts[1].strip() if len(parts) > 1 else ""
 
             if command == "JOIN":
 
-                username = parts[1].strip()
+                username = argument
 
                 with lock:
                     clients[client_socket] = username
@@ -52,65 +64,63 @@ def handle_client(client_socket, addr):
 
             elif command == "MSG":
 
-                message = parts[1].strip()
+                if username:
+                    formatted = f"[{get_timestamp()}] {username}: {argument}"
+                    print(formatted)
 
-                formatted = f"[{get_timestamp()}] {username}: {message}"
-
-                print(formatted)
-
-                broadcast(formatted, client_socket)
-
-            elif command == "USERS":
-
-                with lock:
-                    user_list = ", ".join(clients.values())
-
-                response = f"[SERVER] Connected users: {user_list}"
-
-                client_socket.send(response.encode())
+                    broadcast(formatted, client_socket)
 
             elif command == "QUIT":
+
+                if username:
+                    msg = f"[{get_timestamp()}] [SERVER] {username} left the chat"
+                    print(msg)
+
+                    broadcast(msg, client_socket)
+
+                has_left = True
                 break
 
-    except:
-        pass
+    except Exception as e:
+        print(f"[ERROR] {addr}: {e}")
 
     finally:
 
         with lock:
             if client_socket in clients:
-
                 name = clients[client_socket]
                 del clients[client_socket]
 
-                msg = f"[{get_timestamp()}] [SERVER] {name} left the chat"
+                if not has_left:
+                    msg = f"[{get_timestamp()}] [SERVER] {name} left the chat"
+                    print(msg)
 
-                print(msg)
+                    broadcast(msg, client_socket)
 
-                broadcast(msg)
-
-        client_socket.close()
+        try:
+            client_socket.close()
+        except:
+            pass
 
 
 def start_server():
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     server.bind((HOST, PORT))
-
     server.listen(10)
 
     print(f"Chat server running on port {PORT}")
 
     while True:
-
         client_socket, addr = server.accept()
+        print(f"[NEW CONNECTION] {addr}")
 
         thread = threading.Thread(
             target=handle_client,
             args=(client_socket, addr)
         )
-
         thread.start()
 
 
